@@ -1,6 +1,41 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
+    "C:\\Users\\vishe\\OneDrive\\Desktop\\HackIndia\\HackIndia_Project\\blockchain\\contracts\\CampaignFunding.sol": {
+      "lastModificationDate": 1746106936454,
+      "contentHash": "a4b575c292d2ab487a6de69aa96fd42b",
+      "sourceName": "contracts/CampaignFunding.sol",
+      "solcConfig": {
+        "version": "0.8.0",
+        "settings": {
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        ">=0.8.0 <0.9.0"
+      ],
+      "artifacts": [
+        "CampaignFunding"
+      ]
+    },
     "C:\\Users\\vishe\\OneDrive\\Desktop\\HackIndia\\HackIndia_Project\\blockchain\\contracts\\UserVerification.sol": {
       "lastModificationDate": 1745906310079,
       "contentHash": "6749f46c1c0803bff2bf868788abdbe6",
