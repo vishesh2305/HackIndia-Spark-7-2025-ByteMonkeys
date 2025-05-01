@@ -175,3 +175,42 @@ export const recordBackendPayment = async (campaignId, paymentData) => {
         throw error;
     }
 }
+
+
+
+// frontend/src/utils/api.jsx
+// ... (keep existing functions like handleResponse, fetchCampaigns etc.) ...
+
+// Create PayPal Order (Calls Backend API)
+export const createPaypalOrderApi = async (orderData) => {
+    // orderData: { campaignId, amount, currency }
+    try {
+        console.log("API: Calling backend to create PayPal order:", orderData);
+        const response = await fetch(`${API_BASE_URL}/paypal/create-order`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData),
+        });
+        return await handleResponse(response); // Use existing helper
+    } catch (error) {
+        console.error('API Error: Creating PayPal order via backend failed:', error);
+        throw error; // Re-throw for the component to handle
+    }
+};
+
+// Capture PayPal Order (Calls Backend API)
+export const capturePaypalOrderApi = async (captureDetails) => {
+    // captureDetails: { orderID, campaignId }
+    try {
+        console.log("API: Calling backend to capture PayPal order:", captureDetails);
+        const response = await fetch(`${API_BASE_URL}/paypal/capture-order`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(captureDetails),
+        });
+        return await handleResponse(response); // Use existing helper
+    } catch (error) {
+        console.error('API Error: Capturing PayPal order via backend failed:', error);
+        throw error; // Re-throw for the component to handle
+    }
+};

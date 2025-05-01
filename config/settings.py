@@ -69,7 +69,7 @@ FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'True').lower() in ['true', '1', 't']
 
 # CORS Origins (adjust for your frontend URL, especially in production)
 # Use comma-separated values in .env: ALLOWED_ORIGINS="http://localhost:3000,http://yourdomain.com"
-_allowed_origins_str = os.getenv('ALLOWED_ORIGINS', "http://localhost:3000,http://127.0.0.1:3000") # Default might be wrong
+_allowed_origins_str = os.getenv('ALLOWED_ORIGINS', "http://localhost:3000,http://127.0.0.1:3000, http://localhost:5173") # Default might be wrong
 ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(',')]
 
 # Logging Configuration (Optional basic setup)

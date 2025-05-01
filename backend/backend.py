@@ -11,6 +11,7 @@ import json
 import uuid
 from datetime import datetime
 import time # Import time for potential delays between API calls
+import paypalrestsdk
 
 # --- Add project root to sys.path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -38,6 +39,11 @@ load_dotenv()
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.environ.get("GOOGLE_CSE_ID")
 BLACKLISTED_KEYWORDS = ["scam", "fraud", "fake", "illegal", "ponzi", "pyramid scheme"]
+
+
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")
+PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "sandbox") 
 
 
 # --- Import Google API Client Library ---
@@ -68,7 +74,7 @@ except ModuleNotFoundError as e:
 
 # --- Basic Flask App Setup ---
 app = Flask(__name__)
-CORS(app, origins=settings.ALLOWED_ORIGINS, supports_credentials=True)
+CORS(app, origins="*", supports_credentials=True)
 
 logging.basicConfig(level=settings.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app.logger.setLevel(settings.LOG_LEVEL)
@@ -113,6 +119,23 @@ try:
     user_collection = db['users']; campaign_collection = db['campaigns']; payment_collection = db['payments']
     app.logger.info(f"Connected to MongoDB at {settings.MONGO_URI}, database: {settings.DB_NAME}")
 except Exception as e: app.logger.error(f"ERROR: MongoDB connection failed to {settings.MONGO_URI}: {e}. Database features disabled."); mongo_client = None; db = None; user_collection = None; campaign_collection = None; payment_collection = None
+
+# --- PayPal Configuration ---
+
+if PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET:
+    try:
+        paypalrestsdk.configure({
+            "mode": PAYPAL_MODE, # 'sandbox' or 'live'
+            "client_id": PAYPAL_CLIENT_ID,
+            "client_secret": PAYPAL_CLIENT_SECRET
+        })
+        app.logger.info(f"PayPal SDK configured in '{PAYPAL_MODE}' mode.")
+    except Exception as pp_err:
+        app.logger.error(f"Failed to configure PayPal SDK: {pp_err}", exc_info=True)
+        # Consider disabling PayPal features if configuration fails
+else:
+    app.logger.warning("PayPal Client ID or Secret not found in environment. PayPal features disabled.")
+# --- End PayPal Configuration ---
 
 
 # --- Tesseract Configuration ---
@@ -616,6 +639,204 @@ def record_funding(campaign_id):
     except Exception as update_e: app.logger.error(f"Error updating campaign amountRaised for {campaign_id}: {update_e}", exc_info=True)
     payment_details['_id'] = str(payment_result.inserted_id); payment_details.pop('campaignId', None)
     return jsonify(payment_details), 201
+
+
+
+@app.route('/api/paypal/create-order', methods=['POST'])
+def create_paypal_order():
+    # Check if PayPal SDK was configured
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+         return jsonify({"error": "PayPal is not configured on the server."}), 503
+
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 415
+
+    data = request.get_json()
+    campaign_id = data.get('campaignId')
+    # Expect amount as string like "10.50"
+    amount_str = data.get('amount')
+    # PayPal requires standard currency codes (e.g., USD, EUR, INR)
+    currency_code = data.get('currency', 'USD') # Default or get from request
+
+    if not campaign_id or not amount_str:
+        return jsonify({"error": "Missing campaignId or amount"}), 400
+
+    # Basic amount validation
+    try:
+        amount_val = float(amount_str)
+        if amount_val <= 0: raise ValueError("Amount must be positive")
+    except ValueError:
+         return jsonify({"error": "Invalid amount format (must be positive number)"}), 400
+
+    # Fetch campaign title for description (optional but good)
+    campaign_title = f"Campaign {campaign_id}" # Default
+    if campaign_collection:
+        try:
+            campaign = campaign_collection.find_one({'_id': ObjectId(campaign_id)})
+            if campaign: campaign_title = campaign.get('title', campaign_title)
+        except Exception as e: app.logger.warning(f"Could not fetch campaign title for PayPal order: {e}")
+
+    app.logger.info(f"Creating PayPal order for Campaign {campaign_id}, Amount: {amount_str} {currency_code}")
+
+    try:
+        # Create PayPal Payment object
+        payment = paypalrestsdk.Payment({
+            "intent": "sale", # 'sale' for immediate capture
+            "payer": { "payment_method": "paypal" },
+            "transactions": [{
+                "item_list": {
+                    "items": [{
+                        "name": f"Fund: {campaign_title[:120]}", # Limit name length
+                        "sku": f"CAMP-{campaign_id}",
+                        "price": amount_str,
+                        "currency": currency_code,
+                        "quantity": 1 }]
+                },
+                "amount": {
+                    "total": amount_str,
+                    "currency": currency_code },
+                "description": f"Contribution to campaign ID: {campaign_id}" # Limit desc length
+            }],
+            # Redirect URLs often not needed for client-side JS capture,
+            # but set placeholders or frontend URLs if required.
+            "redirect_urls": {
+                "return_url": request.host_url + "payment/success", # Example
+                "cancel_url": request.host_url + "payment/cancel"   # Example
+            }})
+
+        # Create payment on PayPal
+        if payment.create():
+            app.logger.info(f"PayPal Order created successfully. Order ID: {payment.id}")
+            # Return the 'id' which is the Order ID the frontend needs
+            return jsonify({'orderID': payment.id}), 201
+        else:
+            app.logger.error(f"PayPal Order creation failed: {payment.error}")
+            # Provide specific error details if possible
+            error_details = payment.error if isinstance(payment.error, dict) else {'message': str(payment.error)}
+            return jsonify({"error": "Failed to create PayPal order", "details": error_details}), 500
+
+    except Exception as e:
+        app.logger.error(f"Error creating PayPal order: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error during PayPal order creation"}), 500
+
+
+
+
+@app.route('/api/paypal/capture-order', methods=['POST'])
+def capture_paypal_order():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+         return jsonify({"error": "PayPal is not configured on the server."}), 503
+    if campaign_collection is None or payment_collection is None:
+         return jsonify({'error': 'Database service not available'}), 503
+
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 415
+
+    data = request.get_json()
+    order_id = data.get('orderID') # PayPal Order ID from frontend onApprove
+    campaign_id_str = data.get('campaignId') # Pass campaign ID from frontend
+
+    if not order_id or not campaign_id_str:
+        return jsonify({"error": "Missing PayPal orderID or campaignId"}), 400
+
+    app.logger.info(f"Attempting to capture PayPal Order ID: {order_id} for Campaign: {campaign_id_str}")
+
+    try:
+        # Find the payment (order) by ID
+        payment = paypalrestsdk.Payment.find(order_id)
+
+        # Execute (capture) the payment
+        # payer_id is required. Get it from the payment object found.
+        if payment.execute({"payer_id": payment.payer.payer_info.payer_id}):
+            app.logger.info(f"PayPal Payment {order_id} captured successfully. State: {payment.state}")
+
+            # --- Payment Successful - Record in DB ---
+            transaction = payment.transactions[0]
+            amount_details = transaction.amount
+            captured_amount = amount_details.total
+            captured_currency = amount_details.currency
+            paypal_payment_id = payment.id # This is PayPal's transaction ID
+            payer_email = payment.payer.payer_info.email
+
+            # 1. Save to Payment Collection
+            try:
+                campaign_oid = ObjectId(campaign_id_str)
+                payment_record = {
+                    'campaignId': campaign_oid,
+                    'campaignMongoId': campaign_id_str,
+                    'paymentGateway': 'PayPal',
+                    'gatewayTransactionId': paypal_payment_id,
+                    'orderId': order_id, # Store original OrderID too
+                    'amount': captured_amount, # Store the actual captured amount
+                    'currency': captured_currency,
+                    'payerInfo': {'email': payer_email},
+                    'status': payment.state, # Should be 'approved' or similar
+                    'timestamp_utc': datetime.utcnow().isoformat() + "Z",
+                    'payment_details_ipfs_cid': None # Optional: Store on IPFS
+                }
+                # payment_cid = store_data_ipfs(payment_record) # Optional IPFS store
+                # payment_record['payment_details_ipfs_cid'] = payment_cid or 'N/A'
+
+                payment_insert_result = payment_collection.insert_one(payment_record.copy())
+                payment_record_id = str(payment_insert_result.inserted_id)
+                app.logger.info(f"PayPal payment record saved. DB ID: {payment_record_id}, PayPal ID: {paypal_payment_id}")
+
+            except Exception as db_err:
+                app.logger.error(f"Error saving PayPal payment {order_id} to DB: {db_err}", exc_info=True)
+                # CRITICAL: Payment captured but failed to save! Manual intervention needed.
+                # Consider refund logic or alerting system.
+                return jsonify({"error": "Payment captured but failed to record in database. Please contact support."}), 500
+
+            # 2. Update Campaign Amount Raised
+            try:
+                campaign = campaign_collection.find_one({'_id': campaign_oid})
+                if campaign:
+                    # **Decision Point:** How to store mixed funds?
+                    # Option: Add a separate field like 'amountRaisedPayPalUSD'
+                    current_raised_paypal_str = campaign.get(f'amountRaisedPayPal{captured_currency}', '0')
+                    new_total_paypal = float(current_raised_paypal_str) + float(captured_amount)
+
+                    update_result = campaign_collection.update_one(
+                        {'_id': campaign_oid},
+                        {'$set': {
+                            f'amountRaisedPayPal{captured_currency}': str(new_total_paypal),
+                            'updated_at_utc': datetime.utcnow().isoformat() + "Z"
+                        }}
+                    )
+                    if update_result.modified_count:
+                        app.logger.info(f"Campaign {campaign_id_str} PayPal amount ({captured_currency}) updated.")
+                    else:
+                        app.logger.warning(f"Campaign {campaign_id_str} PayPal amount update failed (no modification).")
+                else:
+                    app.logger.error(f"Campaign {campaign_id_str} not found for updating amount after PayPal payment {order_id}.")
+
+            except Exception as update_err:
+                 app.logger.error(f"Failed to update campaign amount for PayPal payment {order_id}: {update_err}")
+                 # Non-critical error, payment is recorded, but amount might be off.
+
+            # Return success details to frontend
+            return jsonify({
+                 "status": "success",
+                 "message": "PayPal payment captured and recorded.",
+                 "paypalPaymentId": paypal_payment_id,
+                 "orderId": order_id,
+                 "amount": captured_amount,
+                 "currency": captured_currency,
+             }), 200
+            # --- End DB Recording ---
+
+        else:
+            # Payment execution failed
+            app.logger.error(f"PayPal Payment execution failed for Order ID {order_id}: {payment.error}")
+            error_details = payment.error if isinstance(payment.error, dict) else {'message': str(payment.error)}
+            return jsonify({"error": "Failed to capture PayPal payment", "details": error_details}), 500
+
+    except paypalrestsdk.ResourceNotFound:
+         app.logger.error(f"PayPal Order ID {order_id} not found by SDK.")
+         return jsonify({"error": "PayPal order not found."}), 404
+    except Exception as e:
+        app.logger.error(f"Error capturing PayPal order {order_id}: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error during PayPal payment capture"}), 500
 
 
 # --- Main Execution ---
