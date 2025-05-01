@@ -28,6 +28,8 @@ import pytesseract
 import ipfshttpclient
 import requests
 from thefuzz import fuzz
+from bs4 import BeautifulSoup
+import requests
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -35,6 +37,8 @@ load_dotenv()
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.environ.get("GOOGLE_CSE_ID")
+BLACKLISTED_KEYWORDS = ["scam", "fraud", "fake", "illegal", "ponzi", "pyramid scheme"]
+
 
 # --- Import Google API Client Library ---
 try:
@@ -54,7 +58,7 @@ except ImportError:
 try:
     from config import settings # Import from config folder using modified path
     # Use direct import from utils.py
-    from utils import prepare_ai_verification, process_search_results, hash_data
+    from utils import prepare_ai_verification, process_search_results,hash_data
 except ModuleNotFoundError as e:
      print(f"ERROR: Could not import modules. Is the script run from the project root? Or is {e.name} missing?")
      print(f"Project root added to path: {project_root}")
@@ -323,6 +327,38 @@ def perform_Google_Search(queries):
 
 # --- API Endpoints ---
 
+def scrape_website_data(url, campaign_id):
+    """
+    Performs basic web scraping of a website and logs the data.
+    This function does not affect the campaign creation process.
+
+    Args:
+        url (str): The URL to scrape.
+        campaign_id (str): The ID of the campaign being processed.
+    """
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # --- Example Scraping (Adapt to your needs!) ---
+        title = soup.title.text if soup.title else "No Title"
+        paragraphs = [p.text for p in soup.find_all("p")]
+
+        log_data = {
+            "campaign_id": campaign_id,
+            "scraped_url": url,
+            "page_title": title,
+            "paragraphs": paragraphs[:5]  # Limit to first 5 paragraphs
+        }
+        app.logger.info(f"Scraped data from {url}: {json.dumps(log_data, indent=2)}")
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Web scraping failed for {url}: {e}")
+    except Exception as e:
+        app.logger.error(f"Unexpected error during web scraping: {e}", exc_info=True)
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     # ... (Implementation from previous response) ...
@@ -445,11 +481,11 @@ def get_auth_status(user_identifier):
 
 @app.route('/api/campaigns', methods=['POST'])
 def create_campaign():
-    """Creates a new campaign, stores details on IPFS, performs AI verification using Google Search API."""
-    # --- THIS FUNCTION NOW USES perform_Google Search ---
-
-    if not request.is_json: return jsonify({"error": "Request must be JSON"}), 415
-    if campaign_collection is None: return jsonify({'error': 'Database service not available'}), 503
+    """Creates a new campaign, stores details on IPFS, and performs AI verification (if necessary)."""
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 415
+    if campaign_collection is None:
+        return jsonify({'error': 'DB unavailable'}), 503
 
     data = request.get_json()
     required_fields = ['title', 'description', 'goalAmount', 'creatorName']
@@ -457,85 +493,59 @@ def create_campaign():
         missing = [f for f in required_fields if f not in data]
         return jsonify({'error': f'Missing required campaign fields: {", ".join(missing)}'}), 400
 
-    app.logger.info(f"Received campaign creation request from '{data['creatorName']}' for title: '{data['title']}'")
+    app.logger.info(
+        f"Received campaign creation request from '{data['creatorName']}' for title: '{data['title']}'")
 
     campaign_details = {
-        'title': data['title'], 'description': data['description'], 'goalAmount': data.get('goalAmount', '0'),
-        'creatorName': data['creatorName'], 'amountRaised': '0', 'status': 'pending_verification',
-        'details_ipfs_cid': None, 'campaign_creation_tx_hash': None, 'verification_result': None,
-        'created_at_utc': datetime.utcnow().isoformat() + "Z", 'updated_at_utc': datetime.utcnow().isoformat() + "Z",
+        'title': data['title'],
+        'description': data['description'],
+        'goalAmount': data.get('goalAmount', '0'),
+        'creatorName': data['creatorName'],
+        'amountRaised': '0',
+        'status': 'pending_verification',
+        'details_ipfs_cid': None,
+        'campaign_creation_tx_hash': None,
+        'verification_result': None,
+        'created_at_utc': datetime.utcnow().isoformat() + "Z",
+        'updated_at_utc': datetime.utcnow().isoformat() + "Z",
     }
 
-    # 1. Store campaign details dictionary on IPFS
-    campaign_details_cid = store_data_ipfs(campaign_details)
-    campaign_details['details_ipfs_cid'] = campaign_details_cid or 'N/A - IPFS Error'
-    if not campaign_details_cid: app.logger.warning("Proceeding despite IPFS data storage failure.")
+    campaign_details_cid = store_data_ipfs(campaign_details) or 'N/A - IPFS Error'
+    campaign_details['details_ipfs_cid'] = campaign_details_cid # Added to store the IPFS CID
 
-    # 2. Save initial data to MongoDB
     try:
         insert_result = campaign_collection.insert_one(campaign_details.copy())
         campaign_id = insert_result.inserted_id
-        app.logger.info(f"Campaign '{data['title']}' saved to DB with ID: {campaign_id}")
-        campaign_details['_id'] = str(campaign_id) # Add string ID for response
+        campaign_details['_id'] = str(campaign_id)  # Convert ObjectId to string for JSON serialization
     except Exception as mongo_e:
         app.logger.error(f"Error saving campaign to MongoDB: {mongo_e}", exc_info=True)
         return jsonify({'error': 'Failed to save campaign to database'}), 500
 
-    # 3. Prepare AI Verification Queries
-    ai_queries, prep_error = prepare_ai_verification(campaign_details)
-    if prep_error:
-        app.logger.error(f"Failed to prepare AI verification for campaign {campaign_id}: {prep_error}")
-        campaign_collection.update_one( {'_id': campaign_id}, {'$set': {'status': 'verification_error', 'verification_result': prep_error, 'updated_at_utc': datetime.utcnow().isoformat() + "Z"}})
-        campaign_details['status'] = 'verification_error'
+    is_blacklisted = False
+    combined_campaign_text = f"{campaign_details['title'].lower()} {campaign_details['description'].lower()}"
+    for keyword in BLACKLISTED_KEYWORDS:
+        if keyword in combined_campaign_text:
+            is_blacklisted = True
+            campaign_details['status'] = 'rejected'
+            campaign_details['verification_result'] = f"Campaign rejected: Blacklisted keyword '{keyword}' found."
+            campaign_collection.update_one({'_id': campaign_id},
+                                            {'$set': {'status': 'rejected',
+                                                      'verification_result': campaign_details['verification_result'],
+                                                      'updated_at_utc': datetime.utcnow().isoformat() + "Z"}})
+            return jsonify(campaign_details), 201
+            break  # Exit loop as soon as a keyword is found
+
+    # If no blacklisted keywords are found, proceed without Google Search
+    if not is_blacklisted:
+        campaign_details['status'] = 'verified'  # Or any status you deem appropriate for direct approval
+        campaign_details['verification_result'] = "No blacklisted keywords found. Skipping AI verification."
+        campaign_collection.update_one({'_id': campaign_id},
+                                        {'$set': {'status': 'verified',
+                                                  'verification_result': campaign_details['verification_result'],
+                                                  'updated_at_utc': datetime.utcnow().isoformat() + "Z"}})
         return jsonify(campaign_details), 201
 
-    # --- Perform Google Search API Call and Process Results ---
-    app.logger.info(f"Performing AI Verification via Google Search API for campaign {campaign_id}. Queries: {ai_queries}")
-    is_legit = False
-    verification_details = "AI Verification Error: Could not get results."
-    new_status = 'verification_error' # Default status if search fails
 
-    try:
-        # Call the helper function to perform the actual Google Search
-        search_results = perform_Google_Search(ai_queries) # Corrected function call <--- FIX
-        app.logger.debug(f"Raw Google Search Results Received for campaign {campaign_id}: {json.dumps(search_results, indent=2)}")
-
-
-        if search_results is not None: # Check if search returned something (even empty list)
-            app.logger.info(f"Processing Google Search results for campaign {campaign_id}...")
-            # Process the actual search results using the function from utils.py
-            is_legit, verification_details = process_search_results(
-                search_results # Pass the results obtained from the tool
-                # campaign_details['title']
-                )
-            app.logger.info(f"AI Verification Result for {campaign_id}: Legit={is_legit}")
-            new_status = 'verified' if is_legit else 'rejected'
-        else:
-            # Handle case where perform_Google Search returned None (e.g., API key issue, library missing)
-            app.logger.error(f"AI Verification failed for campaign {campaign_id}: perform_Google Search returned None.")
-            verification_details = "AI Verification failed: Error calling search API (check API keys/quota/library install)."
-            new_status = 'verification_error'
-
-    except Exception as ai_error:
-        app.logger.error(f"Error during AI verification API call or processing for {campaign_id}: {ai_error}", exc_info=True)
-        verification_details = f"AI Verification Processing Error: {str(ai_error)}"
-        new_status = 'verification_error'
-
-    # Update campaign status in MongoDB
-    app.logger.info(f"Updating campaign {campaign_id} status to '{new_status}'. Reason: {verification_details}")
-    campaign_collection.update_one(
-        {'_id': campaign_id},
-        {'$set': {
-            'status': new_status,
-            'verification_result': verification_details, # Store the detailed reason
-            'updated_at_utc': datetime.utcnow().isoformat() + "Z"
-            }
-         }
-    )
-    campaign_details['status'] = new_status
-    campaign_details['verification_result'] = verification_details # Include details in response
-
-    return jsonify(campaign_details), 201 # Return created/updated campaign
 
 @app.route('/api/campaigns', methods=['GET'])
 def get_campaigns():
