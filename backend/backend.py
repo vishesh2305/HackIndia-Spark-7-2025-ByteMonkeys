@@ -29,6 +29,13 @@ import ipfshttpclient
 import requests
 from thefuzz import fuzz
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.environ.get("GOOGLE_CSE_ID")
+
 # --- Import Google API Client Library ---
 try:
     from googleapiclient.discovery import build
@@ -174,45 +181,68 @@ def extract_details_regex(text):
     return extracted_data
 
 def normalize_date(date_str):
-    # ... (Implementation from previous response) ...
-    if not date_str: return None; cleaned_date_str = re.sub(r'\s*[-/.]\s*', '-', date_str.strip()); cleaned_date_str = re.sub(r'[^\d-]', '', cleaned_date_str)
+    if not date_str:
+        return None
+    cleaned_date_str = date_str.strip()  # Initialize with a safe default
+    cleaned_date_str = re.sub(r'\s*[-/.]\s*', '-', cleaned_date_str)
+    cleaned_date_str = re.sub(r'[^\d-]', '', cleaned_date_str)
     for fmt in ["%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%d", "%d-%m-%y", "%m-%d-%y"]:
-        try: dt = datetime.strptime(cleaned_date_str, fmt);
-        except ValueError: continue
-        if dt.year < 100: dt = dt.replace(year = dt.year + 2000 if dt.year < 50 else dt.year + 1900)
+        try:
+            dt = datetime.strptime(cleaned_date_str, fmt)
+        except ValueError:
+            continue
+        if dt.year < 100:
+            dt = dt.replace(year=dt.year + 2000 if dt.year < 50 else dt.year + 1900)
         return dt.strftime('%Y-%m-%d')
     app.logger.warning(f"Could not parse date '{date_str}' (cleaned: '{cleaned_date_str}') into YYYY-MM-DD.")
     return None
-
 def normalize_string(s):
     # ... (Implementation from previous response) ...
     if s is None: return None; s = s.strip().lower(); s = re.sub(r'\s+', ' ', s); s = re.sub(r'[^\w\s.-]', '', s); return s
 
 def compare_details(user_input, extracted_data):
-    # ... (Implementation from previous response) ...
-    name_match, dob_match = False, False; match_details = []
+    name_match = False
+    dob_match = False
+    match_details = []
     norm_user = {'name': normalize_string(user_input.get('name')), 'dob': normalize_date(user_input.get('dob'))}
     norm_extracted = {'name': normalize_string(extracted_data.get('name')), 'dob': normalize_date(extracted_data.get('dob'))}
-    app.logger.debug(f"Comparing Normalized User: {norm_user} vs Extracted: {norm_extracted}")
+    app.logger.debug(f"Comparing User: {norm_user} vs Extracted: {norm_extracted}")
+
+    # Name Comparison
     if norm_user['name'] and norm_extracted['name']:
         name_similarity = fuzz.token_sort_ratio(norm_user['name'], norm_extracted['name'])
-        if name_similarity >= NAME_FUZZINESS_THRESHOLD: name_match = True; match_details.append(f"Name match (Similarity: {name_similarity}%)")
-        else: match_details.append(f"Name mismatch (Sim: {name_similarity}%) User:'{norm_user['name']}', Extracted:'{norm_extracted['name']}'")
-    elif not norm_user['name'] and norm_extracted['name']: match_details.append("Name missing in user input.")
-    elif norm_user['name'] and not norm_extracted['name']: match_details.append("Name could not be extracted from document.")
-    else: match_details.append("Name missing in both user input and extracted data.")
+        if name_similarity >= NAME_FUZZINESS_THRESHOLD:
+            name_match = True
+            match_details.append(f"Name match ({name_similarity}%)")
+        else:
+            match_details.append(f"Name mismatch (Sim: {name_similarity}%) User:'{norm_user['name']}', Extracted:'{norm_extracted['name']}'")
+    elif not norm_user['name'] and norm_extracted['name']:
+        match_details.append("Name missing in user input.")
+    elif norm_user['name'] and not norm_extracted['name']:
+        match_details.append("Name could not be extracted from document.")
+    else:
+        match_details.append("Name missing in both user input and extracted data.")
+
+    # DOB Comparison
     if norm_user['dob'] and norm_extracted['dob']:
-        if norm_user['dob'] == norm_extracted['dob']: dob_match = True; match_details.append(f"DOB match: {norm_user['dob']}")
-        else: match_details.append(f"DOB mismatch - User:'{norm_user['dob']}', Extracted:'{norm_extracted['dob']}'")
-    elif not norm_user['dob'] and norm_extracted['dob']: match_details.append("DOB missing in user input.")
-    elif norm_user['dob'] and not norm_extracted['dob']: match_details.append("DOB could not be extracted from document.")
-    else: match_details.append("DOB missing in both user input and extracted data.")
-    validation_passed = name_match and dob_match
+        if norm_user['dob'] == norm_extracted['dob']:
+            dob_match = True
+            match_details.append(f"DOB match: {norm_user['dob']}")
+        else:
+            match_details.append(f"DOB mismatch - User:'{norm_user['dob']}', Extracted:'{norm_extracted['dob']}'")
+    elif not norm_user['dob'] and norm_extracted['dob']:
+        match_details.append("DOB missing in user input.")
+    elif norm_user['dob'] and not norm_extracted['dob']:
+        match_details.append("DOB could not be extracted from document.")
+    else:
+        match_details.append("DOB missing in both user input and extracted data.")
+
+    # Validation logic: Pass if DOB matches, regardless of name
+    validation_passed = dob_match  # Changed logic
     message = "OCR Data Validation Passed." if validation_passed else "OCR Data Validation Failed."
     details_message = " | ".join(match_details)
     app.logger.info(f"Comparison Result: {message} Details: {details_message}")
     return validation_passed, message, details_message
-
 def store_data_ipfs(data_to_store):
     # ... (Implementation from previous response) ...
     if ipfs_client is None: app.logger.warning("IPFS client not connected. Skipping IPFS data storage."); return None
@@ -475,10 +505,9 @@ def create_campaign():
             app.logger.info(f"Processing Google Search results for campaign {campaign_id}...")
             # Process the actual search results using the function from utils.py
             is_legit, verification_details = process_search_results(
-                search_results, # Pass the results obtained from the tool
-                campaign_details['title'],
-                campaign_details['creatorName']
-            )
+                search_results # Pass the results obtained from the tool
+                # campaign_details['title']
+                )
             app.logger.info(f"AI Verification Result for {campaign_id}: Legit={is_legit}")
             new_status = 'verified' if is_legit else 'rejected'
         else:
@@ -581,6 +610,6 @@ def record_funding(campaign_id):
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    app.logger.info(f"Starting Flask Backend Server in {'Debug' if settings.FLASK_DEBUG else 'Production'} mode...")
+    app.logger.info(f"Starting Flask Backend Server in {'Debug' if settings.FLASK_DEBUG else 'Production'} mode..."),
     # Use settings for host, port, debug
     app.run(host=settings.FLASK_HOST, port=settings.FLASK_PORT, debug=settings.FLASK_DEBUG)

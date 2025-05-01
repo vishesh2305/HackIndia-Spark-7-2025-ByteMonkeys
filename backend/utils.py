@@ -1,165 +1,170 @@
-# HACKINDIA_PROJECT/backend/utils.py
 import logging
 import re
 import json
 import hashlib
 
+# --- NLTK Sentiment Setup ---
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+try:
+    nltk.data.find('sentiment/vader_lexicon.zip')
+except LookupError:
+    nltk.download('vader_lexicon')
+
+analyzer = SentimentIntensityAnalyzer()
+
 # --- AI Verification Logic ---
 
-def process_search_results(search_results, campaign_title, campaign_creator):
+def process_search_results(search_results):
     """
-    Analyzes search results to determine campaign legitimacy.
+    Analyzes search results to determine campaign legitimacy using sentiment analysis.
 
     Args:
-        search_results (list): List of SearchResults objects from the Google Search tool.
-                               Expected format: list[SearchResults(query=str, results=list[PerQueryResult(snippet=str, source_title=str, url=str)])]
-        campaign_title (str): The title of the campaign being verified.
-        campaign_creator (str): The creator/organizer of the campaign.
+        search_results (list): List of SearchResults objects.
 
     Returns:
-        tuple: (bool, str) - (is_legitimate, details_string)
+        tuple: (is_legitimate: bool, details_string: str)
     """
     found_legitimate_links = 0
     found_official_creator_mention = 0
-    found_campaign_mention = 0 # Less weighted usually
     found_scam_warnings = 0
-    details_list = ["AI Verification Analysis:"]
-    processed_urls = set() # Avoid analyzing the same URL multiple times
+    cumulative_sentiment_score = 0.0
+    sentiment_analyzed_count = 0
 
-    # Check if the input structure is as expected
+    details_list = ["AI Verification Analysis (with Sentiment):"]
+    processed_urls = set()
+
     if not isinstance(search_results, list):
-        logging.error(f"process_search_results expected a list, got {type(search_results)}")
-        return False, "Internal Error: Invalid search results format received."
+        logging.error(f"Expected list of search results, got {type(search_results)}")
+        return False, "Internal Error: Invalid search results format."
 
-    # Keywords for analysis (customize as needed)
-    LEGIT_INDICATORS = ["official website", "registered charity", "nonprofit", "foundation", "news", "report", "donation page", "verified", "501(c)(3)", "tax id", "guidestar", "charity navigator"]
-    SCAM_INDICATORS = ["scam", "fraud", "warning", "fake", "review scam", "complaint", "beware", "suspicious"]
-    # Normalize campaign details for comparison
-    norm_title = campaign_title.lower()
-    norm_creator = campaign_creator.lower() if campaign_creator else ""
-
+    LEGIT_INDICATORS = [
+        "official website", "registered charity", "nonprofit", "foundation", "news",
+        "report", "donation page", "verified", "501(c)(3)", "tax id", "guidestar", "charity navigator"
+    ]
+    SCAM_INDICATORS = [
+        "scam", "fraud", "warning", "fake", "review scam", "complaint", "beware", "suspicious"
+    ]
 
     for result_set in search_results:
-         # Validate result_set structure (basic)
         if not hasattr(result_set, 'query') or not hasattr(result_set, 'results'):
             logging.warning(f"Skipping invalid result_set item: {result_set}")
             continue
 
-        query = result_set.query
-        details_list.append(f"\n>> Results for query: '{query}'")
+        details_list.append(f"\n>> Results for query: '{result_set.query}'")
 
         if result_set.results and isinstance(result_set.results, list):
+            if len(result_set.results) == 0:
+                logging.warning(f"No results found for query: {result_set.query}")
             for item in result_set.results:
-                # Validate item structure (basic)
                 if not hasattr(item, 'url') or not hasattr(item, 'snippet') or not hasattr(item, 'source_title'):
-                     logging.warning(f"Skipping invalid PerQueryResult item: {item}")
-                     continue
+                    logging.warning(f"Skipping invalid result item: {item}")
+                    continue
 
                 if item.url in processed_urls:
-                    continue # Skip already processed URL
+                    continue
                 processed_urls.add(item.url)
 
-                snippet = (item.snippet or "").lower()
-                source_title = (item.source_title or "").lower()
-                combined_text = f"{source_title} {snippet}"
-                details_list.append(f"  - Source: {item.source_title or 'N/A'}")
-                details_list.append(f"    Snippet: {item.snippet[:150] if item.snippet else 'N/A'}...")
+                snippet = item.snippet or ""
+                source_title = item.source_title or "N/A"
+                combined_text = f"{source_title.lower()} {snippet.lower()}"
+
+                details_list.append(f"  - Source: {source_title}")
+                details_list.append(f"    Snippet: {snippet[:150]}...")
                 details_list.append(f"    URL: {item.url}")
 
+                # --- Sentiment Analysis ---
+                try:
+                    if snippet.strip():
+                        sentiment_score = analyzer.polarity_scores(snippet)['compound']
+                        cumulative_sentiment_score += sentiment_score
+                        sentiment_analyzed_count += 1
+                        sentiment_label = (
+                            "Positive" if sentiment_score >= 0.05 else
+                            "Negative" if sentiment_score <= -0.05 else
+                            "Neutral"
+                        )
+                        details_list.append(f"    Sentiment Score: {sentiment_score:.2f} ({sentiment_label})")
+                except Exception as e:
+                    logging.error(f"Sentiment analysis failed for snippet: {e}")
+                    continue
 
-                # Check for scam indicators
                 if any(kw in combined_text for kw in SCAM_INDICATORS):
                     found_scam_warnings += 1
-                    details_list.append("    [!] Found potential scam indicator.")
+                    details_list.append("    [!] Potential scam indicator found.")
 
-                # Check for legitimacy indicators
                 if any(kw in combined_text for kw in LEGIT_INDICATORS):
                     found_legitimate_links += 1
-                    details_list.append("    [*] Found potential legitimacy indicator.")
-
-                # Check if creator name appears (especially on non-generic domains)
-                if norm_creator and norm_creator in combined_text:
-                     found_official_creator_mention += 1
-                     details_list.append(f"    [*] Found mention of creator: '{campaign_creator}'.")
-
-                # Check if campaign title appears
-                if norm_title in combined_text:
-                     found_campaign_mention += 1
+                    details_list.append("    [*] Legitimacy indicator found.")
 
         else:
-            details_list.append("  - No results found for this specific query.")
+            details_list.append("  - No results found for this query.")
 
-    # --- Decision Logic (Example - requires tuning) ---
     details_list.append("\n--- Verification Summary ---")
+    avg_sentiment = cumulative_sentiment_score / sentiment_analyzed_count if sentiment_analyzed_count > 0 else 0.0
+    details_list.append(f"Average Sentiment Score: {avg_sentiment:.2f} from {sentiment_analyzed_count} results")
+
     is_legit = False
 
-    # Prioritize scam warnings heavily
     if found_scam_warnings > 0:
         is_legit = False
-        details_list.append(f"Result: Rejected (Found {found_scam_warnings} potential scam indicators).")
-    # Require some evidence of legitimacy if no scam warnings
-    elif found_official_creator_mention >= 1 and found_legitimate_links >= 1:
-         is_legit = True
-         details_list.append(f"Result: Verified (Found mentions of creator ({found_official_creator_mention}) and legitimacy indicators ({found_legitimate_links})).")
-    elif found_legitimate_links >= 2: # Allow verification without direct creator mention if other signals are strong
-         is_legit = True
-         details_list.append(f"Result: Verified (Found {found_legitimate_links} legitimacy indicators, creator mention weak/absent).")
-    # Default to reject if insufficient evidence
+        details_list.append(f"Result: ❌ Rejected (Found {found_scam_warnings} scam indicators).")
+    elif found_legitimate_links >= 1:
+        if avg_sentiment >= -0.1:
+            is_legit = True
+            details_list.append("Result: ✅ Verified (Strong indicators and sentiment OK).")
+        else:
+            is_legit = False
+            details_list.append("Result: ❌ Rejected (Strong negative sentiment despite indicators).")
     else:
         is_legit = False
-        details_list.append(f"Result: Rejected (Insufficient positive indicators. Legitimacy indicators: {found_legitimate_links}, Creator mentions: {found_official_creator_mention}, Scam warnings: {found_scam_warnings}).")
+        details_list.append("Result: ❌ Rejected (Insufficient legitimacy indicators).")
 
-    logging.info(f"AI Verification Decision: is_legit={is_legit}")
+    logging.info(f"Final AI Verification: is_legit={is_legit}, sentiment={avg_sentiment:.2f}")
     return is_legit, "\n".join(details_list)
 
 
 def prepare_ai_verification(campaign_details):
     """
-    Prepares the queries needed for AI verification using the Google Search tool.
+    Prepares search queries for verifying a campaign.
 
     Args:
-        campaign_details (dict): Dictionary containing 'title', 'description', 'creatorName', etc.
+        campaign_details (dict): Campaign data.
 
     Returns:
-        tuple: (list | None, str | None) - (queries, error_message)
-               Returns a list of queries if successful, or (None, error_message) if input is invalid.
+        tuple: (list of queries, error message if any)
     """
-    logging.info(f"Preparing AI verification queries for campaign: {campaign_details.get('title')}")
+    logging.info(f"Preparing queries for campaign: {campaign_details.get('title')}")
     title = campaign_details.get('title', '')
-    creator = campaign_details.get('creatorName', '')
 
     if not title:
-        return None, "Campaign title is missing, cannot prepare verification queries."
+        return None, "Campaign title missing for query preparation."
 
-    # Construct search queries
-    queries = []
-    # Query 1: Exact title + context words
-    queries.append(f'"{title}" campaign fundraising donation')
-    if creator:
-        # Query 2: Title + Creator
-        queries.append(f'"{title}" campaign "{creator}"')
-        # Query 3: Creator legitimacy check
-        queries.append(f'"{creator}" charity OR foundation OR nonprofit registration OR scam') # Add scam keyword here too
-    else:
-         # Query 2 (No Creator): Broader title check
-         queries.append(f'"{title}" charity OR cause OR donation OR scam')
+    queries = [f'"{title}" campaign fundraising donation']
+    queries.append(f'"{title}" charity OR cause OR donation OR scam')
 
-    logging.info(f"Generated AI verification queries: {queries}")
-    # Return the queries needed for the tool call
+    logging.info(f"Generated queries: {queries}")
     return queries, None
 
 
-# --- Hashing Utility ---
 def hash_data(data):
-    """Hashes a dictionary of data after converting to a sorted JSON string."""
+    """
+    Hashes a dictionary into a consistent SHA-256 hash.
+
+    Args:
+        data (dict): Dictionary to hash.
+
+    Returns:
+        str | None: Hash string or None on failure.
+    """
     if not isinstance(data, dict):
-        logging.error(f"Attempted to hash non-dictionary data: {type(data)}")
+        logging.error("Data to be hashed must be a dictionary.")
         return None
 
     try:
-        # Ensure consistent order and format for hashing
         sorted_data_string = json.dumps(data, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(sorted_data_string.encode('utf-8')).hexdigest()
-    except TypeError as e:
-        logging.error(f"Error JSON serializing data for hashing: {e} - Data: {data}")
+    except Exception as e:
+        logging.error(f"Failed to hash data: {e}")
         return None

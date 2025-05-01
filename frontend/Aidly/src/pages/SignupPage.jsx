@@ -286,10 +286,14 @@ function SignupPage() {
                      </button>
                  </form>
                  {ocrValidationResult && (
-                     <p style={{ ...styles.message, color: ocrValidationResult.is_valid ? 'green' : 'red' }}>
-                         {ocrValidationResult.message} {ocrValidationResult.details || ''}
-                     </p>
-                 )}
+        <p style={{ ...styles.message, color: ocrValidationResult.is_valid ? 'green' : 'red' }}>
+        {ocrValidationResult.message}
+        {ocrValidationResult.details && ` Details: ${ocrValidationResult.details}`}
+        {!ocrValidationResult.is_valid && ocrValidationResult.details.includes("Name mismatch") && (
+          <span>  Please verify the extracted name.</span>
+        )}
+    </p>
+)}
             </fieldset>
 
         </div>
