@@ -1,35 +1,44 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+// HACKINDIA_PROJECT/frontend/src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import SignupPage from './pages/SignupPage.jsx'; // Use .jsx
+import HomePage from './pages/HomePage.jsx';   // Use .jsx
+import './App.css'; // Optional global styles
+
+// Simple private route component using Outlet for nested routes
+const PrivateRoute = () => {
+  // Check authentication status (e.g., from localStorage)
+  // This is a basic check; consider more robust auth state management
+  const isAuthenticated = localStorage.getItem('isValidated') === 'true' && localStorage.getItem('userName');
+  console.log("PrivateRoute Check: isAuthenticated =", isAuthenticated); // Debug log
+
+  return isAuthenticated ? <Outlet /> : <Navigate to="/" replace />;
+};
 
 function App() {
-  const [count, setCount] = useState(0)
+    return (
+        <Router>
+            <div className="App"> {/* Optional: Add a container class */}
+                {/* Consider adding a persistent Navbar/Header here */}
+                <Routes>
+                    {/* Public Route */}
+                    <Route path="/" element={<SignupPage />} />
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+                    {/* Private Routes */}
+                    <Route element={<PrivateRoute />}>
+                        {/* All routes nested under PrivateRoute require authentication */}
+                        <Route path="/home" element={<HomePage />} />
+                        {/* Add other private routes here if needed */}
+                        {/* Example: <Route path="/profile" element={<UserProfile />} /> */}
+                    </Route>
+
+                     {/* Fallback route for unknown paths */}
+                     <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+                 {/* Consider adding a persistent Footer here */}
+            </div>
+        </Router>
+    );
 }
 
-export default App
+export default App;
