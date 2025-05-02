@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { fetchCampaigns } from '../utils/api.jsx'; // Use .jsx
 import CampaignCard from './CampaignCard.jsx';   // Use .jsx
 
-function CampaignList({ refreshTrigger }) { // Accept refresh trigger prop
+function CampaignList({ refreshTrigger, onSuccessfulPayment }) { // Accept refresh trigger prop
     const [campaigns, setCampaigns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -53,7 +53,7 @@ function CampaignList({ refreshTrigger }) { // Accept refresh trigger prop
             <div style={styles.listContainer}>
                 {campaigns.map(campaign => (
                     // Ensure campaign has a unique _id before rendering card
-                    campaign?._id ? <CampaignCard key={campaign._id} campaign={campaign} /> : null
+                    campaign?._id ? <CampaignCard key={campaign._id} campaign={campaign} onSuccessfulPayment={onSuccessfulPayment}/> : null
                 ))}
             </div>
         );

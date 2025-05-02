@@ -45,6 +45,12 @@ function HomePage() {
         setShouldRefreshList(true); // Signal CampaignList to refresh
     };
 
+    const handleSuccessfulPayment = () => {
+        console.log("Payment successful, signaling list refresh.");
+        setShouldRefreshList(true); // Trigger refresh in CampaignList
+    };
+
+
     // Reset refresh trigger after CampaignList has potentially used it
     useEffect(() => {
         if (shouldRefreshList) {
@@ -69,7 +75,7 @@ function HomePage() {
                 {showCreateForm ? (
                     <CampaignForm userName={userName} onCampaignCreated={handleCampaignCreated} />
                 ) : (
-                    <CampaignList refreshTrigger={shouldRefreshList} /> // Pass refresh trigger
+                    <CampaignList refreshTrigger={shouldRefreshList} onSuccessfulPayment={handleSuccessfulPayment}/> // Pass refresh trigger
                 )}
             </main>
         </div>

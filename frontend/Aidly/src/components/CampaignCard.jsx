@@ -42,7 +42,7 @@ const formatFiatAmount = (amountStr, currencyCode) => {
     }
 }
 
-function CampaignCard({ campaign }) {
+function CampaignCard({ campaign, onSuccessfulPaymentRefreshNeeded }) {
     const [showPayment, setShowPayment] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
 
@@ -171,6 +171,10 @@ function CampaignCard({ campaign }) {
                         // TODO: Trigger a refresh of the CampaignList data
                         // This usually involves calling a function passed down from HomePage/CampaignList
                         // For example: props.onSuccessfullPaymentRefreshNeeded();
+                        if (onSuccessfulPaymentRefreshNeeded) {
+                            console.log("Triggering list refresh after successful payment.");
+                            onSuccessfulPaymentRefreshNeeded();
+                        }
                     }}
                 />
             )}
