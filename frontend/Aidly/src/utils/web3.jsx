@@ -1,26 +1,40 @@
 import { ethers } from 'ethers';
+import CampaignFunding from "./CampaignFunding.json";
+let web3Initialized=false;
+let provider = null;
+let signer = null;
+let contract = null;
 
+
+const CONTRACT_ADDRESS = CampaignFunding.address;
+const CONTRACT_ABI = CampaignFunding.abi;
 // Attempt to import ABI and address saved by deploy script
 let campaignContractInfo = null;
 
-try {
-    // This assumes deploy.js saved CampaignFunding.json in src/utils/
-    campaignContractInfo = require('./CampaignFunding.json');
-} catch (error) {
-    console.error(
-        "ERROR: Could not load ./CampaignFunding.json.\n",
-        "Ensure the contract is deployed and the deploy script ran successfully,\n",
-        "saving the file to frontend/src/utils/."
-    );
-    // CRITICAL: Do not proceed if ABI is missing.  Other functions will fail.
-    // Consider setting a global flag or throwing an error here.
-    campaignContractInfo = { address: null, abi: null }; // Set to null to prevent further errors
-    // alert("Blockchain features unavailable: Contract details missing."); // Remove alert.  Handle in component.
-}
+// try {
+//     // This assumes deploy.js saved CampaignFunding.json in src/utils/
+//     campaignContractInfo = require(CampaignFunding);
+// } catch (error) {
+//     console.error(
+//         "ERROR: Could not load ./CampaignFunding.json.\n",
+//         "Ensure the contract is deployed and the deploy script ran successfully,\n",
+//         "saving the file to frontend/src/utils/."
+//     );
+//     // CRITICAL: Do not proceed if ABI is missing.  Other functions will fail.
+//     // Consider setting a global flag or throwing an error here.
+//     campaignContractInfo = { address: null, abi: null }; // Set to null to prevent further errors
+//     // alert("Blockchain features unavailable: Contract details missing."); // Remove alert.  Handle in component.
+// }
 
-const CONTRACT_ADDRESS = campaignContractInfo?.address;
 console.log(campaignContractInfo);
-const CONTRACT_ABI = campaignContractInfo?.abi;
+
+
+if (!CONTRACT_ADDRESS || !ethers.isAddress(CONTRACT_ADDRESS)) {
+    console.error(
+      "ERROR: CampaignFunding Contract Address is not set correctly in CampaignFunding.json!\n",
+      "Deploy the contract and ensure the deploy script updated the file."
+    );
+  }
 
 // Check if contract address is valid (basic check)
 if (!CONTRACT_ADDRESS || !ethers.isAddress(CONTRACT_ADDRESS)) {
@@ -31,11 +45,6 @@ if (!CONTRACT_ADDRESS || !ethers.isAddress(CONTRACT_ADDRESS)) {
     // CRITICAL:  Contract address is invalid.  Do not proceed.
     // alert("Blockchain features are unavailable. Contract address not configured."); // Remove alert
 }
-
-let provider = null; // Use null initially
-let signer = null;   // Use null initially
-let contract = null; // CampaignFunding contract instance
-let web3Initialized = false; // Track overall initialization state
 
 // Function to check and initialize Ethers (idempotent)
 export const initWeb3 = async () => {

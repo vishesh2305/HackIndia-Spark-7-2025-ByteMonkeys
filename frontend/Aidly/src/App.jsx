@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import SignupPage from './pages/SignupPage.jsx'; // Use .jsx
 import HomePage from './pages/HomePage.jsx';   // Use .jsx
 import './App.css'; // Optional global styles
+import { initWeb3 } from './utils/web3.jsx';
 
 // Simple private route component using Outlet for nested routes
 const PrivateRoute = () => {

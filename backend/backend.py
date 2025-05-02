@@ -74,8 +74,9 @@ except ModuleNotFoundError as e:
 
 # --- Basic Flask App Setup ---
 app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 logging.basicConfig(level=settings.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app.logger.setLevel(settings.LOG_LEVEL)
 
@@ -87,7 +88,7 @@ app.logger.info(f"Upload folder configured at: {app.config['UPLOAD_FOLDER']}")
 
 # --- Service Connections (IPFS, Web3, MongoDB) ---
 # (These remain the same)
-ipfs_client = None
+ipfs_client = "http://127.0.0.1:5001/webui"
 try:
     ipfs_client = ipfshttpclient.connect(settings.IPFS_API_URL)
     ipfs_id = ipfs_client.id()
@@ -641,11 +642,16 @@ def record_funding(campaign_id):
     return jsonify(payment_details), 201
 
 
-
 @app.route('/api/paypal/create-order', methods=['POST'])
 def create_paypal_order():
+    # Check if MongoDB collection is available - CORRECTED CHECK
+    if campaign_collection is None:
+         app.logger.error("MongoDB campaign_collection is not initialized.")
+         return jsonify({'error': 'Database service not available'}), 503
+
     # Check if PayPal SDK was configured
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+         app.logger.error("PayPal Client ID or Secret not configured.")
          return jsonify({"error": "PayPal is not configured on the server."}), 503
 
     if not request.is_json:
@@ -670,11 +676,21 @@ def create_paypal_order():
 
     # Fetch campaign title for description (optional but good)
     campaign_title = f"Campaign {campaign_id}" # Default
-    if campaign_collection:
+    # Use the corrected check for campaign_collection before using it
+    if campaign_collection is not None:
         try:
-            campaign = campaign_collection.find_one({'_id': ObjectId(campaign_id)})
-            if campaign: campaign_title = campaign.get('title', campaign_title)
-        except Exception as e: app.logger.warning(f"Could not fetch campaign title for PayPal order: {e}")
+            # Ensure campaign_id is a valid ObjectId before querying
+            campaign_oid = ObjectId(campaign_id)
+            campaign = campaign_collection.find_one({'_id': campaign_oid})
+            if campaign:
+                campaign_title = campaign.get('title', campaign_title)
+            else:
+                app.logger.warning(f"Campaign {campaign_id} not found for PayPal order description.")
+        except Exception as e:
+             app.logger.warning(f"Could not fetch campaign title for PayPal order ({campaign_id}): {e}")
+    else:
+        app.logger.warning("MongoDB not initialized, cannot fetch campaign title for PayPal order.")
+
 
     app.logger.info(f"Creating PayPal order for Campaign {campaign_id}, Amount: {amount_str} {currency_code}")
 
@@ -718,7 +734,6 @@ def create_paypal_order():
     except Exception as e:
         app.logger.error(f"Error creating PayPal order: {e}", exc_info=True)
         return jsonify({"error": "Internal server error during PayPal order creation"}), 500
-
 
 
 
