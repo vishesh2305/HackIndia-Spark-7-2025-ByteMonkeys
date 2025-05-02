@@ -135,20 +135,18 @@ function CampaignCard({ campaign, onSuccessfulPaymentRefreshNeeded }) {
                 </div>
                 {/* Updated Progress Text */}
                 <p style={styles.progressText}>
-                    Raised: {raisedAmountsText()} / Goal: {ethGoalFormatted} ETH ({ethProgress.toFixed(1)}% ETH Goal)
-                </p>
-                <p style={styles.progressNote}>
-                    (Progress bar shows ETH goal achievement)
+                    Raised: {raisedAmountsText()})
                 </p>
             </div>
 
             {/* Links and Actions */}
             <div style={styles.linksAndActions}>
-                {campaign.details_ipfs_cid && !campaign.details_ipfs_cid.startsWith('N/A') && (
+                {/* {campaign.details_ipfs_cid && !campaign.details_ipfs_cid.startsWith('N/A') && (
                     <a href={`${ipfsGateway}${campaign.details_ipfs_cid}`} target="_blank" rel="noopener noreferrer" style={styles.ipfsLink}>
                         View Details (IPFS)
                     </a>
-                )}
+                )
+                } */}
                 {campaign.status === 'verified' && (
                     <button onClick={() => setShowPayment(!showPayment)} style={styles.fundButton}>
                         {showPayment ? 'Cancel Funding' : 'Fund Campaign'}
@@ -171,7 +169,7 @@ function CampaignCard({ campaign, onSuccessfulPaymentRefreshNeeded }) {
                         // TODO: Trigger a refresh of the CampaignList data
                         // This usually involves calling a function passed down from HomePage/CampaignList
                         // For example: props.onSuccessfullPaymentRefreshNeeded();
-                        if (onSuccessfulPaymentRefreshNeeded) {
+                                                if (onSuccessfulPaymentRefreshNeeded) {
                             console.log("Triggering list refresh after successful payment.");
                             onSuccessfulPaymentRefreshNeeded();
                         }

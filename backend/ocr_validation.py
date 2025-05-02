@@ -160,35 +160,35 @@ def compare_data(extracted_data, user_input_data, name_fuzziness_threshold=90):
     app.logger.debug(f"Normalized User Input: {json.dumps(norm_user_input, indent=2)}\n")
 
     # Name Comparison
-    if norm_extracted.get('name') and norm_user_input.get('name'):
-        name_similarity = fuzz.ratio(norm_extracted['name'], norm_user_input['name'])
-        if name_similarity >= name_fuzziness_threshold:
-            name_match = True
-            match_details.append(f"Name match (Similarity: {name_similarity}%)")
-        else:
-            match_details.append(
-                f"Name mismatch (Similarity: {name_similarity}%) - Extracted: '{norm_extracted['name']}', Input: '{norm_user_input['name']}'")
-    elif norm_extracted.get('name') is None and norm_user_input.get('name') is not None:
-        match_details.append(f"Name mismatch - Extracted: Name not found, Input: '{norm_user_input['name']}'")
-    elif norm_user_input.get('name') is None and norm_extracted.get('name') is not None:
-        match_details.append(f"Name mismatch - Input: Name not provided, Extracted: '{norm_extracted['name']}'")
-    else:
-        match_details.append("Name missing in both extracted data and user input.")
+    # if norm_extracted.get('name') and norm_user_input.get('name'):
+    #     name_similarity = fuzz.ratio(norm_extracted['name'], norm_user_input['name'])
+    #     if name_similarity >= name_fuzziness_threshold:
+    #         name_match = True
+    #         match_details.append(f"Name match (Similarity: {name_similarity}%)")
+    #     else:
+    #         match_details.append(
+    #             f"Name mismatch (Similarity: {name_similarity}%) - Extracted: '{norm_extracted['name']}', Input: '{norm_user_input['name']}'")
+    # elif norm_extracted.get('name') is None and norm_user_input.get('name') is not None:
+    #     match_details.append(f"Name mismatch - Extracted: Name not found, Input: '{norm_user_input['name']}'")
+    # elif norm_user_input.get('name') is None and norm_extracted.get('name') is not None:
+    #     match_details.append(f"Name mismatch - Input: Name not provided, Extracted: '{norm_extracted['name']}'")
+    # else:
+    #     match_details.append("Name missing in both extracted data and user input.")
 
-    # DOB Comparison
-    if norm_extracted.get('dob') and norm_user_input.get('dob'):
-        if norm_extracted['dob'] == norm_user_input['dob']:
-            dob_match = True
-            match_details.append(f"DOB match: {norm_extracted['dob']}")
-        else:
-            match_details.append(
-                f"DOB mismatch - Extracted: '{norm_extracted['dob']}', Input: '{norm_user_input['dob']}'")
-    elif norm_extracted.get('dob') is None and norm_user_input.get('dob') is not None:
-        match_details.append(f"DOB mismatch - Extracted: DOB not found, Input: '{norm_user_input['dob']}'")
-    elif norm_user_input.get('dob') is None and norm_extracted.get('dob') is not None:
-        match_details.append(f"DOB mismatch - Input: DOB not provided, Extracted: '{norm_extracted['dob']}'")
-    else:
-        match_details.append("DOB missing in both extracted data and user input.")
+    # # DOB Comparison
+    # if norm_extracted.get('dob') and norm_user_input.get('dob'):
+    #     if norm_extracted['dob'] == norm_user_input['dob']:
+    #         dob_match = True
+    #         match_details.append(f"DOB match: {norm_extracted['dob']}")
+    #     else:
+    #         match_details.append(
+    #             f"DOB mismatch - Extracted: '{norm_extracted['dob']}', Input: '{norm_user_input['dob']}'")
+    # elif norm_extracted.get('dob') is None and norm_user_input.get('dob') is not None:
+    #     match_details.append(f"DOB mismatch - Extracted: DOB not found, Input: '{norm_user_input['dob']}'")
+    # elif norm_user_input.get('dob') is None and norm_extracted.get('dob') is not None:
+    #     match_details.append(f"DOB mismatch - Input: DOB not provided, Extracted: '{norm_extracted['dob']}'")
+    # else:
+    #     match_details.append("DOB missing in both extracted data and user input.")
 
     # Aadhar Comparison
     if norm_extracted.get('aadhar') and norm_user_input.get('aadhar'):

@@ -147,8 +147,8 @@ export const storeValidationHashOnChain = async (dataHash) => {
     }
 
     if (!dataHash || typeof dataHash !== 'string' || !dataHash.startsWith('0x') || dataHash.length !== 66) {
-        console.error("Invalid dataHash provided for blockchain storage:", dataHash);
-        alert("Invalid data hash format for blockchain storage.");
+        // console.error("Invalid dataHash provided for blockchain storage:", dataHash);
+        // alert("Invalid data hash format for blockchain storage.");
         return null;
     }
 

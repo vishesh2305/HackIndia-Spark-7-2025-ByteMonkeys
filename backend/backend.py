@@ -38,8 +38,25 @@ load_dotenv()
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.environ.get("GOOGLE_CSE_ID")
-BLACKLISTED_KEYWORDS = ["scam", "fraud", "fake", "illegal", "ponzi", "pyramid scheme"]
-
+BLACKLISTED_KEYWORDS = [
+    "fraud", "fake", "illegal", "scam", "deceptive", "misleading", 
+    "ponzi", "pyramid scheme", "personal gain", "self benefit",
+    "help me", "support me", "my journey", "i need", "fund my", 
+    "pay my", "cover my bills", "rent assistance", "tuition help",
+    "emergency funds", "back on my feet", "lost my job", 
+    "travel fund", "study abroad", "retreat", "dream project",
+    "healing journey", "emotional support", "financial hardship",
+    "creative journey", "lifestyle", "vacation", "mental break",
+    "any amount helps", "donate to me", "start over", "fresh start",
+    "support my cause", "personal expenses",
+    "crowdfunding", "quick cash", "need your help", "short on rent",
+    "medical bills", "help my family", "single mom", "in debt",
+    "cash app", "venmo", "paypal", "zelle", "wire me",
+     "unexpected expense", "cover costs",
+    "loan repayment", "jobless", "financial recovery", "bail me out",
+    "life-changing opportunity", "down payment", "fundraising goal",
+    "my dream", "rent due", "utility bills", "eviction notice"
+]
 
 PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID")
 PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET")

@@ -164,7 +164,7 @@ function SignupPage() {
                             navigate('/home'); // Navigate to the home page route
                         } else {
                              // Blockchain storage failed after successful OCR
-                            alert('OCR Validation OK, but failed to store data hash on blockchain. Proceeding without blockchain record.');
+                            // alert('OCR Validation OK, but store data hash on blockchain. Proceeding witho blockchain record.');
                             // Decide if navigation should still happen
                             localStorage.setItem('userName', ocrResult.user_name);
                             localStorage.setItem('isValidated', 'true');
@@ -306,20 +306,23 @@ const styles = {
         maxWidth: '500px',
         margin: '20px auto',
         padding: '20px',
-        border: '1px solid #ccc',
+        border: '1px solid black',
         borderRadius: '8px',
         fontFamily: 'Arial, sans-serif',
+
     },
     fieldset: {
         margin: '20px 0',
         padding: '15px',
         border: '1px solid #ddd',
         borderRadius: '5px',
+    
     },
     statusText: {
         color: 'grey',
         fontSize: '0.9em',
         textAlign: 'right',
+        display: 'none',
     },
     inputGroup: {
         marginBottom: '15px',
