@@ -1,4 +1,3 @@
-��#� �A�i�d�l�y�
 Aidly is a secure and AI-powered Crowdfunding platform that help users raise funds through verified campaigns without charging any platform fee.
 Aidly ensure that no fake users can start campaign , so users have to go through a verification process , where their details and pic is verified with any government ID provided.
 Users cannot start the campaign, they can send a request ,then the request is validated through AI sentimental Analysis.
